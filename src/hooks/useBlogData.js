@@ -20,7 +20,7 @@ const setCachedData = (key, data) => {
 const getAllBlogPost = async (page, pageSize) => {
   const cacheKey = `all-blogs-${page}-${pageSize}`;
   const cachedData = getCachedData(cacheKey);
-  
+
   if (cachedData) {
     return cachedData;
   }
@@ -35,12 +35,20 @@ const getAllBlogPost = async (page, pageSize) => {
       },
     }
   );
-  
+
   setCachedData(cacheKey, response.data);
   return response.data;
 };
 
 const getBlogPostsByCategory = async (category, page, pageSize) => {
+  // Added caching for filtered results to improve performance
+  const cacheKey = `category-${category}-${page}-${pageSize}`;
+  const cachedData = getCachedData(cacheKey);
+
+  if (cachedData) {
+    return cachedData;
+  }
+
   const response = await axios.get(
     `${
       import.meta.env.VITE_API_STRAPI
@@ -51,13 +59,15 @@ const getBlogPostsByCategory = async (category, page, pageSize) => {
       },
     }
   );
+
+  setCachedData(cacheKey, response.data);
   return response.data;
 };
 
 const getCategories = async () => {
-  const cacheKey = 'categories';
+  const cacheKey = "categories";
   const cachedData = getCachedData(cacheKey);
-  
+
   if (cachedData) {
     return cachedData;
   }
@@ -70,7 +80,7 @@ const getCategories = async () => {
       },
     }
   );
-  
+
   setCachedData(cacheKey, response.data);
   return response.data;
 };
@@ -88,18 +98,21 @@ export const useBlogData = (page, selectedCategory = null) => {
       setIsLoading(true);
       setError(null);
 
-      let blogPostResponse;
-      
+      // Prepare promises for parallel execution
+      let blogPostPromise;
       if (selectedCategory) {
-        // Fetch posts filtered by category
-        blogPostResponse = await getBlogPostsByCategory(selectedCategory, page, 6);
+        blogPostPromise = getBlogPostsByCategory(selectedCategory, page, 6);
       } else {
-        // Fetch all posts
-        blogPostResponse = await getAllBlogPost(page, 6);
+        blogPostPromise = getAllBlogPost(page, 6);
       }
 
-      // Always fetch categories to ensure we have the latest data
-      const categoriesResponse = await getCategories();
+      const categoriesPromise = getCategories();
+
+      // Execute both requests simultaneously
+      const [blogPostResponse, categoriesResponse] = await Promise.all([
+        blogPostPromise,
+        categoriesPromise,
+      ]);
 
       setBlogPost(blogPostResponse.data || []);
       setPageCount(blogPostResponse.meta?.pagination?.pageCount || 1);
@@ -118,7 +131,7 @@ export const useBlogData = (page, selectedCategory = null) => {
 
   // Function to manually refresh data
   const refreshData = useCallback(() => {
-    setRefreshTrigger(prev => prev + 1);
+    setRefreshTrigger((prev) => prev + 1);
   }, []);
 
   const latestPost = useMemo(() => {
@@ -136,9 +149,7 @@ export const useBlogData = (page, selectedCategory = null) => {
       if (!category || !Array.isArray(blogPost)) return blogPost;
 
       const categoryString =
-        typeof category === "string"
-          ? category
-          : String(category);
+        typeof category === "string" ? category : String(category);
 
       return blogPost.filter(
         (blog) =>
